@@ -139,6 +139,21 @@ object List {
 
   def productL(as: List[Int]): Int =
     foldLeft(1, as) { _ * _ }
+
+  def append[A](as: List[A], bs: List[A]): List[A] = {
+    foldRight(as, bs)(Cons(_, _))
+  }
+
+  def append[A](lists: List[A]*): List[A] = {
+    foldRight(toList(lists), Nil:List[A])(append)
+  }
+
+  def toList[A](as: Seq[A]): List[A] = {
+    as match {
+      case Seq() => Nil
+      case Seq(h, t@_*) => Cons(h, toList(t))
+    }
+  }
 }
 
 object Program {
@@ -190,5 +205,10 @@ object Program {
     println("foldLeft/RightAlt:")
     println(foldLeftAlt("", List("foo", "bar", "nyu")) { _ + "::" + _ })
     println(foldRightAlt(List("foo", "bar", "nyu"), "") { _ + "::" + _ })
+
+    println("append:")
+    val l = List(1,2,3)
+    val appended = List(101,102,103)
+    println(mkString(append(l, appended)))
   }
 }
