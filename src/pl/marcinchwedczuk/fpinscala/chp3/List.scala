@@ -77,7 +77,7 @@ object List {
 
   def foldLeft[A,B](zero: B, as: List[A])(f: (B, A) => B): B = {
     // ((1, 2), 3) ...
-
+    @tailrec
     def go(curr: B, as: List[A]): B = {
       as match {
         case Nil => curr
@@ -111,6 +111,18 @@ object List {
       else curr * p
     }
   }
+
+  def length(as: List[Int]): Int =
+    foldRight(as, 0)((_, len) => len+1)
+
+  def lengthL(as: List[Int]): Int =
+    foldLeft(0, as)((len, _) => len+1)
+
+  def sumL(as: List[Int]): Int =
+    foldLeft(0, as) { _ + _ }
+
+  def productL(as: List[Int]): Int =
+    foldLeft(1, as) { _ * _ }
 }
 
 object Program {
@@ -146,5 +158,17 @@ object Program {
     println("product lazy:")
     println(productLazy(List(1,2,3,0,1,2,3)))
     println(productLazy(List(5,7,8)))
+
+    println("constructors:")
+    println(foldRight(List(1,2,3), Nil:List[Int])(Cons(_, _)))
+    println(foldLeft(Nil:List[Int], List(1,2,3)) { (acc, curr) => Cons(curr, acc) })
+
+    println("length:")
+    println(length(List()))
+    println(length(List(1, 2, 3)))
+
+    println("productL:")
+    println(productL(List[Int]()))
+    println(productL(List(1,2,3)))
   }
 }
