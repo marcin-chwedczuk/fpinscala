@@ -154,6 +154,76 @@ object List {
       case Seq(h, t@_*) => Cons(h, toList(t))
     }
   }
+
+  def addOne(ints: List[Int]): List[Int] = {
+    foldRight(ints, Nil:List[Int]) { (n, tail) =>
+      Cons(n+1, tail)
+    }
+  }
+
+  def d2s(ds: List[Double]): List[String] = {
+    foldRight(ds, Nil:List[String]) { (d, tail) =>
+      Cons(d.toString, tail)
+    }
+  }
+
+  def map[A,B](as: List[A])(f: A => B): List[B] = {
+    foldRight(as, Nil:List[B]) { (a,bs) =>
+      Cons(f(a), bs)
+    }
+  }
+
+  def filter[A](as: List[A])(f: A => Boolean): List[A] = {
+    foldRight(as, Nil:List[A]) { (a, rs) =>
+      if (f(a)) Cons(a, rs)
+      else rs
+    }
+  }
+
+  def flatMap[A,B](as: List[A])(f: A => List[B]): List[B] = {
+    foldRight(as, Nil:List[B]) { (a, bs) =>
+      append(f(a), bs)
+    }
+  }
+
+  def filterAlt[A](as: List[A])(f: A => Boolean): List[A] = {
+    flatMap(as) { a =>
+      if (f(a)) List(a)
+      else Nil
+    }
+  }
+
+  def sum(as: List[Int], bs: List[Int]): List[Int] = {
+    def go(as: List[Int], bs: List[Int]): List[Int]  = {
+      as match {
+        case Nil => Nil
+        case Cons(ah, at) =>
+          bs match {
+            case Nil => Nil
+            case Cons(bh, bt) =>
+              Cons(ah + bh, go(at, bt))
+          }
+      }
+    }
+
+    go(as, bs)
+  }
+
+  def zipWith[A,B,C](as: List[A], bs: List[B])(f: (A,B) => C): List[C] = {
+    def go(as: List[A], bs: List[B]): List[C]  = {
+      as match {
+        case Nil => Nil
+        case Cons(ah, at) =>
+          bs match {
+            case Nil => Nil
+            case Cons(bh, bt) =>
+              Cons(f(ah, bh), go(at, bt))
+          }
+      }
+    }
+
+    go(as, bs)
+  }
 }
 
 object Program {
@@ -210,5 +280,30 @@ object Program {
     val l = List(1,2,3)
     val appended = List(101,102,103)
     println(mkString(append(l, appended)))
+
+    println("addOne:")
+    println(mkString(addOne(l)))
+
+    println("d2s:")
+    println(mkString(d2s(List(1.0, 2.0, 3.0))))
+
+    println("map:")
+    pr(map(List[Int]()) { _*100 })
+    pr(map(List(1,2,3)) { _*100 })
+
+    println("filter:")
+    pr(filter(List(1,2,3,4,5,6)){ _ % 2 == 0 })
+    pr(filter(l)(a => false))
+    pr(filter(l)(a => true))
+
+    println("filterAlt:")
+    pr(filterAlt(List(1,2,3,4,5,6)){ _ % 2 == 0 })
+    pr(filterAlt(l)(a => false))
+    pr(filterAlt(l)(a => true))
+
+    pr(sum(List(1,2,3), List(1,2,3)))
+    pr(zipWith(List(1,2,3,4), List(1,-2,3)) { _ + _ })
   }
+
+  private def pr[A](as: List[A]): Unit = println(List.mkString(as))
 }
