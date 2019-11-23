@@ -88,6 +88,22 @@ object List {
     go(zero, as)
   }
 
+  def foldLeftAlt[A,B](zero: B, as: List[A])(f: (B,A) => B): B = {
+    val computation = foldRight(as, (x:B) => x) { (a, fACC) =>
+      (acc: B) => fACC(f(acc, a))
+    }
+
+    computation(zero)
+  }
+
+  def foldRightAlt[A,B](as: List[A], zero: B)(f: (A, B) => B): B = {
+    val computation = foldLeft((x:B) => x, as) { (fACC, a) =>
+      (acc: B) => fACC(f(a, acc))
+    }
+
+    computation(zero)
+  }
+
   def mkString[A](as: List[A]): String  = {
     "[" + foldRight(as, "]") { _.toString + ", " + _ }
   }
@@ -170,5 +186,9 @@ object Program {
     println("productL:")
     println(productL(List[Int]()))
     println(productL(List(1,2,3)))
+
+    println("foldLeft/RightAlt:")
+    println(foldLeftAlt("", List("foo", "bar", "nyu")) { _ + "::" + _ })
+    println(foldRightAlt(List("foo", "bar", "nyu"), "") { _ + "::" + _ })
   }
 }
