@@ -62,6 +62,31 @@ object List {
 
     go(as)
   }
+
+  def foldRight[A,B](as: List[A], zero: B)(f: (A, B) => B): B = {
+    // ... (N-2, (N-1, N))
+    def go(as: List[A]): B = {
+      as match {
+        case Nil => zero
+        case Cons(h, t) => f(h, go(t))
+      }
+    }
+
+    go(as)
+  }
+
+  def foldLeft[A,B](zero: B, as: List[A])(f: (B, A) => B): B = {
+    // ((1, 2), 3) ...
+
+    def go(curr: B, as: List[A]): B = {
+      as match {
+        case Nil => curr
+        case Cons(h, t) => go(f(curr, h), t)
+      }
+    }
+
+    go(zero, as)
+  }
 }
 
 object Program {
@@ -81,7 +106,17 @@ object Program {
     println(dropWhile(list, (_: Int) => true))
     println(dropWhile[Int](list, a => a < 3))
 
+    println("init:")
     println(init(init(list)))
     println(init(List(1)))
+
+    println("foldLeft:")
+    println(foldLeft(0, List[Int]()) { _ + _ })
+    println(foldLeft(100, List(2, 5, 10)) { _ / _ })
+
+    println("foldRight:")
+    println(foldRight(List[Int](), 0)  { _ + _ })
+    println(foldRight(List(2, 5, 10), 100) { (a, acc) => acc / a })
+    println(foldRight(List(2.0, 3.0), 2.0)(Math.pow))
   }
 }
