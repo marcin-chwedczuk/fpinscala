@@ -224,6 +224,36 @@ object List {
 
     go(as, bs)
   }
+
+  @tailrec
+  def startsWith[A](as: List[A], sub: List[A]): Boolean = {
+    as match {
+      case Nil =>
+        sub match {
+          case Nil => true
+          case _   => false
+        }
+      case Cons(ah, at) =>
+        sub match {
+          case Nil => true
+          case Cons(sh, st) =>
+            if (ah == sh) startsWith(at, st)
+            else false
+        }
+    }
+  }
+
+  def hasSubsequence[A](as: List[A], sub: List[A]): Boolean = {
+    @tailrec
+    def go(as: List[A]): Boolean = {
+      as match {
+        case _ if startsWith(as, sub) => true
+        case Nil => false
+        case Cons(_, t) => go(t)
+      }
+    }
+    go(as)
+  }
 }
 
 object Program {
@@ -303,6 +333,11 @@ object Program {
 
     pr(sum(List(1,2,3), List(1,2,3)))
     pr(zipWith(List(1,2,3,4), List(1,-2,3)) { _ + _ })
+
+    println("hasSubsequence:")
+    println(hasSubsequence(List(1,2,3), List(3)))
+    println(hasSubsequence(List(1,2,3), List()))
+    println(hasSubsequence(List(1,2,3), List(1,5)))
   }
 
   private def pr[A](as: List[A]): Unit = println(List.mkString(as))
