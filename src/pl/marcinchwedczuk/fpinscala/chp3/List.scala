@@ -87,6 +87,30 @@ object List {
 
     go(zero, as)
   }
+
+  def mkString[A](as: List[A]): String  = {
+    "[" + foldRight(as, "]") { _.toString + ", " + _ }
+  }
+
+  def foldRightLazy[A,B](as: List[A], zero: B)(f: (A, =>B) => B): B = {
+    // ... (N-2, (N-1, N))
+    def go(as: List[A]): B = {
+      println(s"called go: ${mkString(as)}")
+      as match {
+        case Nil => zero
+        case Cons(h, t) => f(h, go(t))
+      }
+    }
+
+    go(as)
+  }
+
+  def productLazy(as: List[Int]): Int = {
+    foldRightLazy(as, 0) { (curr, p) =>
+      if (curr == 0) 0
+      else curr * p
+    }
+  }
 }
 
 object Program {
@@ -118,5 +142,9 @@ object Program {
     println(foldRight(List[Int](), 0)  { _ + _ })
     println(foldRight(List(2, 5, 10), 100) { (a, acc) => acc / a })
     println(foldRight(List(2.0, 3.0), 2.0)(Math.pow))
+
+    println("product lazy:")
+    println(productLazy(List(1,2,3,0,1,2,3)))
+    println(productLazy(List(5,7,8)))
   }
 }
