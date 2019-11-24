@@ -2,3 +2,4 @@
 Open problems:
 
 - Implement `append` using `foldLeft`
+- Filter from ch 5 is not lazy, ones.filter(_ > 5).headOption hangs
