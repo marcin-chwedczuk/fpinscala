@@ -72,15 +72,10 @@ sealed trait Stream[+A] {
     case Cons(h, t) => Stream.cons(f(h()), t().map(f))
   }
 
-  def append[B >: A](other: => Stream[B]): Stream[B] = this match {
-    case Empty => other
-    case Cons(h, t) =>
-      Stream.cons(h(), t().append(other))
-  }
-
-  def flatMap[B](f: A => Stream[B]): Stream[B] = this match {
-    case Empty => Empty
-    case Cons(h, t) => f(h()).append(t().flatMap(f))
+  def map2[B](f: A => B): Stream[B] = {
+    this.foldRight(Stream.empty[B]) { (el, mappedTail) =>
+      Stream.cons(f(el), mappedTail)
+    }
   }
 
   def filter(f: A => Boolean): Stream[A] = this match {
@@ -88,6 +83,36 @@ sealed trait Stream[+A] {
     case Cons(h, t) =>
       if (f(h())) Stream.cons(h(), t().filter(f))
       else t().filter(f)
+  }
+
+  def filter2(f: A => Boolean): Stream[A] = {
+    this.foldRight(Stream.empty[A]) { (el, filteredTail) =>
+      if (f(el)) Stream.cons(el, filteredTail)
+      else filteredTail
+    }
+  }
+
+  def append[B >: A](other: => Stream[B]): Stream[B] = this match {
+    case Empty => other
+    case Cons(h, t) =>
+      Stream.cons(h(), t().append(other))
+  }
+
+  def append2[B >: A](other: => Stream[B]): Stream[B] = {
+    this.foldRight(other) { (el, tail) =>
+      Stream.cons(el, tail)
+    }
+  }
+
+  def flatMap[B](f: A => Stream[B]): Stream[B] = this match {
+    case Empty => Empty
+    case Cons(h, t) => f(h()).append(t().flatMap(f))
+  }
+
+  def flatMap2[B](f: A => Stream[B]): Stream[B] = {
+    this.foldRight(Stream.empty[B]) { (s, flatMapped) =>
+      f(s).append2(flatMapped)
+    }
   }
 }
 
@@ -110,10 +135,27 @@ object Stream {
     if (as.isEmpty) empty
     else cons(as.head, apply(as.tail: _*))
   }
+
+  def unfold[A, S](z: S)(f: S => Option[(A, S)]): Stream[A] = {
+    def unfold(state: S): Stream[A] = {
+      f(state) match {
+        case Some((element, newState)) => Stream.cons(element, unfold(newState))
+        case None => Stream.empty[A]
+      }
+    }
+
+    unfold(z)
+  }
+
+  def ones: Stream[Int] = unfold(()) { s => Some((1, s)) }
+  def constant(n: Int): Stream[Int] = unfold(n) { n => Some((n, n)) }
+  def from(n: Int): Stream[Int] = unfold(n) { n => Some((n, n+1)) }
+  def fibs: Stream[Int] = unfold((0, 1)) { case (f0, f1) => Some((f0, (f1, f0+f1))) }
 }
 
 object StreamProgram {
   def main(args: Array[String]): Unit = {
+    import Stream._
 
     val sOneToTen = Stream(1,2,3,4,5,6,7,8,9,10)
 
@@ -134,8 +176,8 @@ object StreamProgram {
     println(sOneToTen.takeWhile(_ < 7).toList)
 
     // !WARN infinite
-    var ones: Stream[Int] = null
-    ones = Cons(() => 1, () => ones)
+    val ones: Stream[Int] = constant(1)
+    val twos: Stream[Int] = constant(2)
 
     println("foldRight:")
     println(ones.foldRight(0) { (i,sum) => 1 })
@@ -166,5 +208,29 @@ object StreamProgram {
 
     println("flatMap:")
     println(sOneToTen.flatMap(x => Stream(x, x, x)).take(30))
+
+    // map2/filter2/append2/flatMap2
+    println("map2:")
+    println(ones.map2(_*3).take(7))
+
+    println("filter2:")
+    println(ones.filter2(n => true).take(3))
+    println(sOneToTen.filter2(_ % 2 == 0).toList)
+
+    println("append2:")
+    println(ones.append2(twos).take(3))
+    println(sOneToTen.filter(_ > 7).append2(sOneToTen).take(7))
+
+    println("flatMap2:")
+    println(sOneToTen.flatMap2(constant).take(3))
+    println(sOneToTen
+      .flatMap2(n => Stream.cons(2*n, Stream.cons(3*n, Stream.empty)))
+      .take(7))
+
+    println("from:")
+    println(from(3).take(10))
+
+    println("fibs:")
+    println(fibs.take(10))
   }
 }
