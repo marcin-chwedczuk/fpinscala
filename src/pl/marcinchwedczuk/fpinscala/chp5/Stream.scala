@@ -23,6 +23,17 @@ sealed trait Stream[+A] {
     case Cons(h, t) => h() :: t().take(n-1)
   }
 
+  def take2(n: Int): Stream[A] = {
+    Stream.unfold[A, (Int, Stream[A])]((n, this)) {
+      case (_, Empty) => None
+      case (n, _) if n <= 0 => None
+      case (n, Cons(h, t)) =>
+        val el = h()
+        val newState = (n-1, t())
+        Some((el, newState))
+    }
+  }
+
   @tailrec
   final def drop(n: Int): Stream[A] = this match {
     case s if (n <= 0) => s
@@ -41,6 +52,15 @@ sealed trait Stream[+A] {
     this.foldRight(Stream.empty[A]) { (h, tail) =>
       if (f(h)) Stream.cons(h, tail)
       else Stream.empty[A]
+    }
+  }
+
+  final def takeWhile3(f: A => Boolean): Stream[A] = {
+    Stream.unfold(this) {
+      case Empty => None
+      case Cons(h, t) =>
+        if (f(h())) Some((h(), t()))
+        else Some((h(), Stream.empty))
     }
   }
 
@@ -75,6 +95,13 @@ sealed trait Stream[+A] {
   def map2[B](f: A => B): Stream[B] = {
     this.foldRight(Stream.empty[B]) { (el, mappedTail) =>
       Stream.cons(f(el), mappedTail)
+    }
+  }
+
+  def map3[B](f: A => B): Stream[B] = {
+    Stream.unfold[B, Stream[A]](this) {
+      case Empty => None
+      case Cons(h, t) => Some((f(h()), t()))
     }
   }
 
@@ -114,6 +141,31 @@ sealed trait Stream[+A] {
       f(s).append2(flatMapped)
     }
   }
+
+  def startsWith[B >: A](bs: Stream[B]): Boolean = {
+    Stream
+      .zipAll(this, bs)((_, _))
+      .foldRight(true) { (pair, acc) =>
+        pair match {
+          case (Some(aa), Some(bb)) if aa == bb => acc
+          case (_, None) => true
+          case _ => false
+        }
+      }
+  }
+
+  def tails: Stream[Stream[A]] = {
+    Stream.unfold(this) {
+      case Empty => None
+      case s@Cons(_, t) => Some((s, t()))
+    }
+  }
+
+  def hasSubsequence[B >: A](ss: Stream[B]): Boolean = {
+    this
+      .tails
+      .exists(t => t.startsWith(ss))
+  }
 }
 
 case object Empty extends Stream[Nothing]
@@ -151,6 +203,39 @@ object Stream {
   def constant(n: Int): Stream[Int] = unfold(n) { n => Some((n, n)) }
   def from(n: Int): Stream[Int] = unfold(n) { n => Some((n, n+1)) }
   def fibs: Stream[Int] = unfold((0, 1)) { case (f0, f1) => Some((f0, (f1, f0+f1))) }
+
+  def zipWith[A,B,C](a: Stream[A], b: Stream[B])(f: (A,B) => C): Stream[C] = {
+    Stream.unfold((a, b)) {
+      case (Empty, _) => None
+      case (_, Empty) => None
+      case (Cons(ah, at), Cons(bh, bt)) =>
+        val el = f(ah(), bh())
+        val newState = (at(), bt())
+        Some((el, newState))
+    }
+  }
+
+  def zipAll[A,B,C](a: Stream[A], b: Stream[B])
+                   (f: (Option[A],Option[B]) => C): Stream[C] = {
+    Stream.unfold((a, b)) {
+      case (Empty, Empty) => None
+
+      case (Cons(ah, at), Empty) =>
+        val el = f(Some(ah()), None)
+        val newState = (at(), Empty)
+        Some((el, newState))
+
+      case (Empty, (Cons(bh, bt))) =>
+        val el = f(None, Some(bh()))
+        val newState = (Empty, bt())
+        Some((el, newState))
+
+      case (Cons(ah, at), Cons(bh, bt)) =>
+        val el = f(Some(ah()), Some(bh()))
+        val newState = (at(), bt())
+        Some((el, newState))
+    }
+  }
 }
 
 object StreamProgram {
@@ -212,6 +297,8 @@ object StreamProgram {
     // map2/filter2/append2/flatMap2
     println("map2:")
     println(ones.map2(_*3).take(7))
+    println("map3:")
+    println(ones.map3(_*3).take(7))
 
     println("filter2:")
     println(ones.filter2(n => true).take(3))
@@ -232,5 +319,38 @@ object StreamProgram {
 
     println("fibs:")
     println(fibs.take(10))
+
+    println("take2:")
+    println(sOneToTen.take2(4).toList)
+    println(twos.take2(4).toList)
+
+    println("takeWhile3:")
+    println(fibs.takeWhile3(_ < 10).toList)
+
+    println("zipWith:")
+    println(Stream.zipWith(sOneToTen, twos) { _ * _ }.take(8))
+
+    println(Stream.zipAll(sOneToTen, twos.take2(5)) { (a,b) =>
+      (for (aa <- a; bb <- b) yield aa*bb).getOrElse(-1)
+    }.toList)
+
+    println("startsWith:")
+    println(Stream(1,2,3,4).startsWith(Stream(1,2,3,4)))
+    println(Stream(1,2,3,4).startsWith(Stream(1,2,3,4,5)))
+    println(Stream(1,2,3,4).startsWith(Stream(1,2,3)))
+    println(Stream(1,2,3,4).startsWith(Stream(1,3,3)))
+
+    sOneToTen.tails
+      .map3(t => t.toList)
+      .map3 { t => println(t); () } // Booo... side effect
+      .toList // run it
+
+    println(
+      sOneToTen.hasSubsequence(Stream(4,5,6))
+    )
+
+    println(
+      sOneToTen.hasSubsequence(Stream(1,4))
+    )
   }
 }
