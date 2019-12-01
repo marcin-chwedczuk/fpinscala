@@ -166,6 +166,17 @@ sealed trait Stream[+A] {
       .tails
       .exists(t => t.startsWith(ss))
   }
+
+  def scanRight[B](zero: B)(f: (A, =>B) => B): Stream[B] = {
+    this.foldRight((zero, Stream(zero))) { (el, pair) =>
+      // pair (accumulator, scanList)
+      lazy val tmp = pair
+      val newAcc = f(el, tmp._1)
+      val newOps = Stream.cons(newAcc, tmp._2)
+
+      (newAcc, newOps)
+    }._2
+  }
 }
 
 case object Empty extends Stream[Nothing]
@@ -351,6 +362,11 @@ object StreamProgram {
 
     println(
       sOneToTen.hasSubsequence(Stream(1,4))
+    )
+
+
+    println(
+      sOneToTen.scanRight(0)(_ + _).toList
     )
   }
 }
