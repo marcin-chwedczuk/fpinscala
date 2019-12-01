@@ -3,3 +3,16 @@ Open problems:
 
 - Implement `append` using `foldLeft`
 - Filter from ch 5 is not lazy, ones.filter(_ > 5).headOption hangs
+- Implement Streams with lazy head, like () => Option[(E, F)]
+
+lazy val onesS: S[Int] = new S(() => {
+  Some((1, onesS))
+})
+
+println(
+  onesS().get._2().get._2().get._1
+)
+
+class S[A](f: () => Option[(A, S[A])]) {
+    def apply(): Option[(A, S[A])] = f()
+}

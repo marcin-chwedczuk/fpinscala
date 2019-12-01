@@ -136,7 +136,7 @@ object Stream {
     else cons(as.head, apply(as.tail: _*))
   }
 
-  def unfold[A, S](z: S)(f: S => Option[(A, S)]): Stream[A] = {
+  def unfold[A, S](initialState: S)(f: S => Option[(A, S)]): Stream[A] = {
     def unfold(state: S): Stream[A] = {
       f(state) match {
         case Some((element, newState)) => Stream.cons(element, unfold(newState))
@@ -144,7 +144,7 @@ object Stream {
       }
     }
 
-    unfold(z)
+    unfold(initialState)
   }
 
   def ones: Stream[Int] = unfold(()) { s => Some((1, s)) }
