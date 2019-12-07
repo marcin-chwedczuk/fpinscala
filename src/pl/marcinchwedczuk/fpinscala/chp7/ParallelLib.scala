@@ -1,7 +1,7 @@
 package pl.marcinchwedczuk.fpinscala.chp7
 
-import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent._
+import java.util.concurrent.atomic.AtomicReference
 
 object ParallelLib {
   private case class UnitFuture[A](get: A) extends Future[A] {
@@ -70,8 +70,28 @@ object ParallelLib {
   // derived:
   def lazyUnit[A](a: => A): Par[A] = fork(unit(a))
 
+  def map[A,B](a: Par[A])(f: A => B): Par[B] = {
+    map2(a, unit(())) { (av, _) => f(av) }
+  }
+
+  def parMap[A,B](as: List[A])(f: A => B): Par[List[B]] = fork {
+    as.foldRight(unit(List[B]())) { (a: A, list: Par[List[B]]) =>
+      map2(lazyUnit(f(a)), list)(_ :: _)
+    }
+  }
+
+  def sequence[A](pas: List[Par[A]]): Par[List[A]] = fork {
+    pas.foldRight(unit(List[A]())) { (pa, plist) =>
+      map2(pa, plist)(_ :: _)
+    }
+  }
+
   def asyncF[A,B](f: A => B): A => Par[B] = {
     a => lazyUnit(f(a))
+  }
+
+  def sortPar[A <: Ordered[A]](as: Par[List[A]]): Par[List[A]] = {
+    map(as)(_.sorted)
   }
 
   def sum(ints: IndexedSeq[Int]): Par[Int] = {
@@ -102,11 +122,42 @@ object ParallelLib {
       map2(asyncWait(3), asyncWait(4))(_ + _),
       map2(asyncWait(1), asyncWait(2))(_ + _))(_ + _)
 
-    val start = System.currentTimeMillis()
-    println("sum = " + run(es)(tmp1).get())
-    val stop = System.currentTimeMillis()
-    println("took (ms): " + (stop - start))
+    withTime {
+      println("sum = " + run(es)(tmp1).get())
+    }
+
+    val tmp2 = parMap((1 to 10).toList){ n =>
+      Thread.sleep(1000)
+      n
+    }
+
+    withTime {
+      println("parMap's result = " + run(es)(tmp2).get())
+    }
+
+    val tmp3 = (1 to 10).map { n =>
+      lazyUnit {
+        Thread.sleep(1000)
+        n
+      }
+    }
+    .toList
+
+    withTime {
+      println("sequence=" + run(es)(sequence(tmp3)).get())
+    }
 
     es.shutdown()
+  }
+
+  private def withTime(f: => Unit): Unit = {
+    val start = System.currentTimeMillis()
+    try {
+      f
+    }
+    finally {
+      val stop = System.currentTimeMillis()
+      println("took (ms): " + (stop - start))
+    }
   }
 }
