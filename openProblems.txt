@@ -2,7 +2,8 @@
 Open problems:
 
 - Implement `append` using `foldLeft`
-- Filter from ch 5 is not lazy, ones.filter(_ > 5).headOption hangs
+- Filter from ch 5 is not lazy, `ones.filter(_ > 5)` hangs even when we
+  do not access head or tail.
 - Implement Streams with lazy head, like () => Option[(E, F)]
 
 lazy val onesS: S[Int] = new S(() => {
@@ -16,3 +17,8 @@ println(
 class S[A](f: () => Option[(A, S[A])]) {
     def apply(): Option[(A, S[A])] = f()
 }
+
+- Use `CompletableFuture` instead of `Future` while implementing
+  parallel library. Make sure that we do not wait anywhere in this
+  new version of the library, but instead that we use continuations
+  and callback.

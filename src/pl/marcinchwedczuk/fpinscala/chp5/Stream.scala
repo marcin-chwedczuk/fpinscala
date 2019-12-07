@@ -295,7 +295,7 @@ object StreamProgram {
     println(ones.map(i => 3*i).take(5))
 
     println("filter:")
-    // println(ones.filter(_ > 3).headOption)
+    // println(ones.filter(_ > 3))
     println(sOneToTen.filter(_ % 2 == 0).toList)
 
     println("append:")
