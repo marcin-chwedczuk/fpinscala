@@ -22,3 +22,14 @@ class S[A](f: () => Option[(A, S[A])]) {
   parallel library. Make sure that we do not wait anywhere in this
   new version of the library, but instead that we use continuations
   and callback.
+
+- Looks like there is a mistake on page 112, as
+    map(y)(id) == y
+  does not imply that
+    map(unit(x))(f) = f(unit(x))
+  we can imagine the following bad map implementation:
+    badMap(v)(f) = map(v)(id)
+  which just ignores `f` parameter.
+
+
+

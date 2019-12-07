@@ -169,7 +169,42 @@ object ParallelLib {
       println("parFilter: " + run(es)(parFilter(l)(pred)).get())
     }
 
+    def ae[A](msg: String, a: Par[A], b: Par[A]) =
+      assertEqual(es)(msg, a, b)
+
+    ae("law of mapping",
+      map(unit(1))(_ + 1), unit(2))
+
+    def goDeadlock(n: Int): Par[Int] = {
+      if (n <= 1) lazyUnit(42)
+      else fork(goDeadlock(n-1))
+    }
+
+    run(es)(goDeadlock(11)).get()
+
     es.shutdown()
+  }
+
+  private def deadLock(): Unit = {
+    val es = Executors.newFixedThreadPool(1)
+
+    val a = lazyUnit(42 + 1)
+    assertEqual(es)("fork(a) == a", a, fork(a))
+
+    println("NO DEADLOCK???")
+    es.shutdown()
+  }
+
+  private def assertEqual[A](es: ExecutorService)(msg: String, a: Par[A], b: Par[A]): Unit = {
+    val runIt: Par[A] => Future[A] = run(es)
+    val av = runIt(a).get()
+    val bv = runIt(b).get()
+    if (av != bv) {
+      println(s"FAILED: $msg. Left $av. Right $bv.")
+    }
+    else {
+      println(s"OK: $msg.")
+    }
   }
 
   private def withTime(f: => Unit): Unit = {
