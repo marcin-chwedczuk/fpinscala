@@ -94,9 +94,16 @@ object State {
   }
 
   def sequence[S,A](fs: List[State[S,A]]): State[S, List[A]] = {
+    // ! Last operation result is *first* on the list !
     fs.foldLeft(unit[S,List[A]](List())) { (rlist, ra) =>
       map2(rlist, ra) { (list, a) => a :: list }
     }
+
+    /* fix:
+    fs.foldRight(unit[S,List[A]](List())) { (ra, rlist) =>
+      map2(rlist, ra) { (list, a) => a :: list }
+    }
+    */
   }
 
   def main(args: Array[String]): Unit = {
@@ -107,6 +114,77 @@ object State {
     def int2(max: Int): R = int().map(_ % max)
 
     println(sequence(List.fill(7)(int2(10))).run(r))
+  }
+}
+
+object Candy {
+  case class Machine(locked: Boolean, candies: Int, coins: Int) {
+    def hasCandy = candies > 0
+
+    def insertCoin(): Machine = {
+      if (locked && hasCandy)
+        this.copy(locked = false, coins = this.coins+1)
+      else
+        this
+    }
+
+    def turnKnob(): Machine = {
+      if (!locked)
+        this.copy(locked = true, candies = this.candies-1)
+      else
+        this
+    }
+
+    def stats(): (Int, Int) = (this.candies, this.coins)
+  }
+
+  sealed trait Input
+  case object Coin extends Input
+  case object Turn extends Input
+
+  val insertCoin: State[Machine, Unit] =
+    State(m => ((), m.insertCoin()))
+
+  val turnKnob: State[Machine, Unit] =
+    State(m => ((), m.turnKnob()))
+
+  val stats: State[Machine, (Int, Int)] =
+    State(m => (m.stats(), m))
+
+  def applyInput(input: Input): State[Machine, Unit] = input match {
+    case Coin => insertCoin
+    case Turn => turnKnob
+  }
+
+  def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = {
+    for {
+      _ <- State.sequence(inputs.map(applyInput))
+      s <- stats
+    } yield s
+
+    /*
+    State.sequence(inputs.map(applyInput)).flatMap { listOfResults =>
+      stats
+    }
+    */
+  }
+
+  def main(args: Array[String]): Unit = {
+    val m = Machine(locked = true, candies = 2, coins = 0)
+
+    val inputs2 =  List(
+      Turn, Turn,
+      Coin, Coin, Coin,
+      Turn,
+      Turn, Turn, Turn
+      // ,Coin,  Turn, Coin
+    )
+
+    val inputs = List(Turn)
+
+    println( simulateMachine(inputs).run(m)._1 )
+
+    println("sweet")
   }
 }
 
