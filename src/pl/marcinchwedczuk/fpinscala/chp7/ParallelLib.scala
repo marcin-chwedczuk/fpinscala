@@ -80,6 +80,12 @@ object ParallelLib {
     }
   }
 
+  def parFilter[A](as: List[A])(f: A => Boolean): Par[List[A]] = fork {
+    map(sequence(
+      as.map(a => lazyUnit[Option[A]](Some(a).filter(f)))
+    ))(_.filterNot(_.isEmpty).map(_.get))
+  }
+
   def sequence[A](pas: List[Par[A]]): Par[List[A]] = fork {
     pas.foldRight(unit(List[A]())) { (pa, plist) =>
       map2(pa, plist)(_ :: _)
@@ -122,18 +128,22 @@ object ParallelLib {
       map2(asyncWait(3), asyncWait(4))(_ + _),
       map2(asyncWait(1), asyncWait(2))(_ + _))(_ + _)
 
+    /*
     withTime {
       println("sum = " + run(es)(tmp1).get())
     }
+    */
 
     val tmp2 = parMap((1 to 10).toList){ n =>
       Thread.sleep(1000)
       n
     }
 
+    /*
     withTime {
       println("parMap's result = " + run(es)(tmp2).get())
     }
+    */
 
     val tmp3 = (1 to 10).map { n =>
       lazyUnit {
@@ -143,8 +153,20 @@ object ParallelLib {
     }
     .toList
 
+    /*
     withTime {
       println("sequence=" + run(es)(sequence(tmp3)).get())
+    }
+     */
+
+    val l = List(1,2,3,4,5,6,7)
+    val pred: Int => Boolean = { n =>
+      Thread.sleep(1000)
+      (n % 2) == 0
+    }
+
+    withTime {
+      println("parFilter: " + run(es)(parFilter(l)(pred)).get())
     }
 
     es.shutdown()
