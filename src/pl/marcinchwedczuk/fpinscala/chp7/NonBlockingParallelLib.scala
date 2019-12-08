@@ -3,7 +3,7 @@ package pl.marcinchwedczuk.fpinscala.chp7
 import java.util.concurrent._
 import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
 
-import scala.util.Try
+import scala.util.{Failure, Success, Try}
 
 object NonBlockingParallelLib {
   trait Future[+A] {
@@ -114,6 +114,16 @@ object NonBlockingParallelLib {
     def asyncF[A,B](f: A => B): A => Par[B] = {
       a => lazyUnit(f(a))
     }
+
+    def choiceN[A](n: Par[Int])(choices: List[Par[A]]): Par[A] = {
+      n.flatMap { nn =>
+        choices(nn)
+      }
+    }
+
+    def choice[A](cond: Par[Boolean])(t: Par[A], f: Par[A]): Par[A] = {
+      choiceN(cond.map(t => if (t) 0 else 1))(List(t, f))
+    }
   }
 
   case class RichPar[+A](self: Par[A]) {
@@ -132,6 +142,19 @@ object NonBlockingParallelLib {
 
     def map[B](f: A => B): Par[B] = {
       Par.map2(self, Par.unit(())) { (av, _) => f(av) }
+    }
+
+    def flatMap[B](f: A => Par[B]): Par[B] = {
+      es => new Future[B] {
+        override private[chp7] def apply(callback: Try[B] => Unit): Unit = {
+          self(es) { tryA =>
+            tryA.map(f) match {
+              case Success(bb) => bb(es).apply(callback)
+              case Failure(exception) => callback(Failure[B](exception))
+            }
+          }
+        }
+      }
     }
   }
 
@@ -192,6 +215,18 @@ object NonBlockingParallelLib {
         .map(z => 1 / z).map(_.toString).run(es)
     )
 
+    println("choiceN:")
+    println(
+      Par.choiceN(Par.lazyUnit(-3))(List(
+        Par.lazyUnit("0"),
+        Par.lazyUnit("1"),
+        Par.lazyUnit("2"))).run(es))
+
+    println(
+      Par.choiceN(Par.lazyUnit(1))(List(
+        Par.lazyUnit("0"),
+        Par.lazyUnit("1foo"),
+        Par.lazyUnit("2"))).run(es))
     es.shutdown()
   }
 
