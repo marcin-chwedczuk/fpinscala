@@ -3,9 +3,11 @@ package pl.marcinchwedczuk.fpinscala.chp7
 import java.util.concurrent._
 import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
 
+import scala.util.Try
+
 object NonBlockingParallelLib {
   trait Future[+A] {
-    private[chp7] def apply(callback: A => Unit): Unit
+    private[chp7] def apply(callback: Try[A] => Unit): Unit
   }
 
   type Par[+A] = ExecutorService => Future[A]
@@ -14,10 +16,10 @@ object NonBlockingParallelLib {
   // all callbacks to a separate tasks.
 
   object Par {
-    def unit[A](a: A): Par[A] = {
+    def unit[A](a: => A): Par[A] = {
       _ => new Future[A] {
-        override private[chp7] def apply(callback: A => Unit): Unit =
-          callback(a)
+        override private[chp7] def apply(callback: Try[A] => Unit): Unit =
+          callback(Try(a))
       }
     }
 
@@ -29,7 +31,7 @@ object NonBlockingParallelLib {
           }
           catch {
             case e: Throwable =>
-              println(s"ERROR: $e")
+              println(s"INTERNAL ERROR: $e")
               e.printStackTrace()
               throw e
           }
@@ -39,11 +41,9 @@ object NonBlockingParallelLib {
 
     def fork[A](a: => Par[A]): Par[A] = {
       es => new Future[A] {
-        override private[chp7] def apply(callback: A => Unit): Unit = {
+        override private[chp7] def apply(callback: Try[A] => Unit): Unit = {
           schedule(es) {
-            a(es) { aa =>
-              schedule(es)(callback(aa))
-            }
+            a(es)(callback(_))
           }
         }
       }
@@ -52,14 +52,19 @@ object NonBlockingParallelLib {
     def map2[A,B,C](pa: Par[A], pb: Par[B])(f: (A,B) => C): Par[C] = {
       es => new Future[C] {
         private val resultsNumber = new AtomicInteger(0)
-        private val va = new AtomicReference[A]()
-        private val vb = new AtomicReference[B]()
+        private val va = new AtomicReference[Try[A]]()
+        private val vb = new AtomicReference[Try[B]]()
 
-        override private[chp7] def apply(callback: C => Unit): Unit = {
+        override private[chp7] def apply(callback: Try[C] => Unit): Unit = {
           def runIfReady(): Unit = {
             if (resultsNumber.incrementAndGet() == 2) {
               schedule(es) {
-                callback(f(va.get(), vb.get()))
+                callback(
+                  for {
+                    aa <- va.get()
+                    bb <- vb.get()
+                  } yield f(aa, bb)
+                )
               }
             }
           }
@@ -112,8 +117,8 @@ object NonBlockingParallelLib {
   }
 
   case class RichPar[+A](self: Par[A]) {
-    def run(es: ExecutorService): A = {
-      val ref = new AtomicReference[A]()
+    def run(es: ExecutorService): Try[A] = {
+      val ref = new AtomicReference[Try[A]]()
       val latch = new CountDownLatch(1)
 
       self(es) { a =>
@@ -174,8 +179,18 @@ object NonBlockingParallelLib {
       println("before parMap")
       val res = Par.parMap(List.range(1, 100000))(math.sqrt(_)).run(es)
       println("after")
-      println("parMap = " + res.take(100))
+      println("parMap = " + res.get.take(100))
     }
+
+    println("Error handling with Try:")
+    println(
+      Par.unit(0).map(z => 1 / z).map(_.toString).run(es)
+    )
+
+    println(
+      Par.lazyUnit[Int](throw new RuntimeException("foo"))
+        .map(z => 1 / z).map(_.toString).run(es)
+    )
 
     es.shutdown()
   }
