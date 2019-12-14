@@ -33,6 +33,10 @@ case class Gen[+A](sample: State[RNG, A]) {
   def map[B](f: A => B): Gen[B] = {
     Gen[B](sample.map(f))
   }
+
+  def flatMap[B](f: A => Gen[B]): Gen[B] = {
+    Gen(sample.map(f).flatMap(_.sample))
+  }
 }
 
 object Gen {
@@ -70,6 +74,29 @@ object Gen {
     }
   }
 
+  def lowerCaseLetter: Gen[Char] = {
+    choose('a'.toInt, 'z'.toInt+1).map(_.toChar)
+  }
+
+  def word(minLength: Int, maxLengthExclusive: Int): Gen[String] = {
+    choose(minLength, maxLengthExclusive)
+      .flatMap { len =>
+        listOfN(len, lowerCaseLetter)
+      }
+      .map(_.mkString(""))
+  }
+
+  def word: Gen[String] = word(3, 10)
+
+  def sentence: Gen[String] = {
+    choose(3, 8)
+      .flatMap { wordsNumber =>
+        listOfN(wordsNumber, word)
+      }
+      .map(_.mkString(" "))
+      .map(_.capitalize.concat("."))
+  }
+
   def listOfN[A](n: Int, a: Gen[A]): Gen[List[A]] = {
     sequence(List.fill(n)(a))
   }
@@ -96,6 +123,8 @@ object PropTesting {
     ps("listOfN", Gen.listOfN(4, Gen.choose(0, 5)))
 
     ps("boolean", Gen.boolean)
+
+    ps("sentence", Gen.sentence)
   }
 
   private def ps[A](name: String, g: Gen[A]): Unit = {
