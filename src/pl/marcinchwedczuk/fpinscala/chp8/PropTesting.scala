@@ -1,7 +1,7 @@
 package pl.marcinchwedczuk.fpinscala.chp8
 
 import pl.marcinchwedczuk.fpinscala.chp6.{RNG, SimpleRNG, State}
-import pl.marcinchwedczuk.fpinscala.chp8.Prop.{FailedCase, SuccessCount, TestCases}
+import pl.marcinchwedczuk.fpinscala.chp8.Prop.{FailedCase, MaximumSize, SuccessCount, TestCases}
 import pl.marcinchwedczuk.fpinscala.chp5._
 
 sealed trait Result {
@@ -21,13 +21,13 @@ case class Falsified(failure: FailedCase,
 }
 
 // testCases - number of tries per *single* prop!
-case class Prop(run: (TestCases, RNG) => Result) { self =>
+case class Prop(run: (MaximumSize, TestCases, RNG) => Result) { self =>
   def &&(other: Prop): Prop = {
-    Prop { case (testCases, rng) =>
-      self.run(testCases, rng) match {
+    Prop { case (maxSize, testCases, rng) =>
+      self.run(maxSize, testCases, rng) match {
         case f: Falsified => f
         case Passed =>
-          other.run(testCases, rng) match {
+          other.run(maxSize, testCases, rng) match {
             case f: Falsified => f
             case p@Passed => p
           }
@@ -36,11 +36,11 @@ case class Prop(run: (TestCases, RNG) => Result) { self =>
   }
 
   def ||(other: Prop): Prop = {
-    Prop { case (testCases, rng) =>
-      self.run(testCases, rng) match {
+    Prop { case (maxSize, testCases, rng) =>
+      self.run(maxSize, testCases, rng) match {
         case p@Passed => p
         case _: Falsified =>
-          other.run(testCases, rng) match {
+          other.run(maxSize, testCases, rng) match {
             case p@Passed => p
             case f: Falsified => f
           }
@@ -53,8 +53,27 @@ object Prop {
   type FailedCase = String
   type SuccessCount = Int
   type TestCases = Int
+  type MaximumSize = Int
 
-  def forAll[A](a: Gen[A])(p: A => Boolean): Prop = Prop { (n, rng) =>
+  def forAll[A](a: SGen[A])(p: A => Boolean): Prop = Prop { (size, n, rng) =>
+    val casesPerSize = (n + (size - 1)) / size
+
+    val prop = Stream.from(0)
+      .take((n min size) + 1)
+      .map { sampleSize =>
+        forAll(a.forSize(sampleSize))(p)
+      }
+      .map { p =>
+        Prop { (_size, _, _rng) =>
+          p.run(_size, casesPerSize, _rng)
+        }
+      }
+      .reduce(_ && _)
+
+    prop.run(size, n, rng)
+  }
+
+  def forAll[A](a: Gen[A])(p: A => Boolean): Prop = Prop { (_, n, rng) =>
     Stream.zipWith(
         randomStream(a)(rng),
         Stream.from(0))((_, _))
@@ -76,13 +95,17 @@ object Prop {
     s"stacktrace:\n${e.getStackTrace.mkString("\n")}"
 }
 
-case class Gen[+A](sample: State[RNG, A]) {
+case class Gen[+A](sample: State[RNG, A]) { self =>
   def map[B](f: A => B): Gen[B] = {
     Gen[B](sample.map(f))
   }
 
   def flatMap[B](f: A => Gen[B]): Gen[B] = {
     Gen(sample.map(f).flatMap(_.sample))
+  }
+
+  def unsized: SGen[A] = {
+    SGen(_ => self)
   }
 }
 
@@ -178,6 +201,50 @@ object Gen {
   }
 }
 
+case class SGen[+A](forSize: Int => Gen[A]) { self =>
+  def map[B](f: A => B): SGen[B] = {
+    SGen[B](size => self.forSize(size).map(f))
+  }
+
+  def flatMap[B](f: A => Gen[B]): SGen[B] = {
+    SGen[B](size => self.forSize(size).flatMap(f))
+  }
+}
+
+object SGen {
+  def unit[A](a: A): SGen[A] = {
+    Gen(State.unit(a)).unsized
+  }
+
+  def map2[A,B,C](a: SGen[A], b: SGen[B])(f: (A,B) => C): SGen[C] = {
+    SGen { size =>
+      Gen.map2(a.forSize(size), b.forSize(size))(f)
+    }
+  }
+
+  def sequence[A](fs: List[SGen[A]]): SGen[List[A]] = {
+    SGen[List[A]] { size =>
+      Gen.sequence(fs.map(_.forSize(size)))
+    }
+  }
+
+  def weighted[A](g1: (SGen[A],Double), g2: (SGen[A],Double)): SGen[A] = {
+    SGen[A] { size =>
+      Gen.weighted(
+        (g1._1.forSize(size), g1._2),
+        (g2._1.forSize(size), g2._2))
+    }
+  }
+
+  def listOf[A](a: Gen[A]): SGen[List[A]] = {
+    SGen { size => Gen.listOfN(size, a) }
+  }
+
+  def listOf1[A](a: Gen[A]): SGen[List[A]] = {
+    SGen { size => Gen.listOfN(size max 1, a) }
+  }
+}
+
 object PropTesting {
 
   def main(args: Array[String]): Unit = {
@@ -199,15 +266,37 @@ object PropTesting {
       (Gen.choose(0,10), 0.2),
       (Gen.choose(990, 1000), 0.8)))
 
+    ps("listOfN random size",
+      Gen.listOfN(Gen.choose(0, 10), Gen.boolean))
+
     println("test runs ------------------")
     val rng = SimpleRNG(101)
 
     println(
-      Prop.forAll(Gen.choose(0, 10))(_ < 10).run(20, rng))
+      Prop.forAll(Gen.choose(0, 10))(_ < 10).run(-1, 20, rng))
 
     println(
-      Prop.forAll(Gen.choose(0, 10))(_ > 3).run(20, rng))
+      Prop.forAll(Gen.choose(0, 10))(_ > 3).run(-1, 20, rng))
 
+    println("sized runs -------------------")
+    println(
+      Prop.forAll(SGen.listOf(Gen.choose(-10, 10))) { _.length < 5 }.run(10, 200, rng)
+    )
+
+    run("max",
+      Prop.forAll(SGen.listOf(Gen.choose(-10, 10))) { list =>
+        list.forall { _ <= list.max }
+      })
+
+    run("empty list",
+      Prop.forAll(SGen.listOf(Gen.choose(-10, 10))) { _.nonEmpty})
+  }
+
+  private def run(name: String, p: Prop): Unit = {
+    val rng = SimpleRNG(101)
+
+    print(s"$name: ")
+    println(p.run(10, 200, rng))
   }
 
   private def ps[A](name: String, g: Gen[A]): Unit = {
