@@ -25,11 +25,9 @@ trait Prop { self =>
 object Prop {
   type FailedCase = String
   type SuccessCount = Int
-
 }
 
 case class Gen[+A](sample: State[RNG, A]) {
-
   def map[B](f: A => B): Gen[B] = {
     Gen[B](sample.map(f))
   }
@@ -67,6 +65,25 @@ object Gen {
     Gen(sample)
   }
 
+  def union[A](g1: Gen[A], g2: Gen[A]): Gen[A] = {
+    weighted((g1, 0.5), (g2, 0.5))
+  }
+
+  def weighted[A](g1: (Gen[A],Double), g2: (Gen[A],Double)): Gen[A] = {
+    val (gen1, w1) = g1
+    val (gen2, w2) = g2
+
+    val w = w1 + w2
+
+    Gen[A](State { rng =>
+      val (d, rng2) = rng.double
+      if (d*w < w1)
+        gen1.sample.run(rng2)
+      else
+        gen2.sample.run(rng2)
+    })
+  }
+
   def boolean: Gen[Boolean] = {
     choose(0, 2).map {
       case 0 => false
@@ -98,7 +115,13 @@ object Gen {
   }
 
   def listOfN[A](n: Int, a: Gen[A]): Gen[List[A]] = {
-    sequence(List.fill(n)(a))
+    listOfN(Gen.unit(n), a)
+  }
+
+  def listOfN[A](n: Gen[Int], a: Gen[A]): Gen[List[A]] = {
+    n.flatMap { size =>
+      sequence(List.fill(size)(a))
+    }
   }
 
   def listOf[A](element: Gen[A]): Gen[List[A]] = {
@@ -125,6 +148,11 @@ object PropTesting {
     ps("boolean", Gen.boolean)
 
     ps("sentence", Gen.sentence)
+
+    ps("union", Gen.union(Gen.choose(0,10), Gen.choose(990, 1000)))
+    ps("weighted", Gen.weighted(
+      (Gen.choose(0,10), 0.2),
+      (Gen.choose(990, 1000), 0.8)))
   }
 
   private def ps[A](name: String, g: Gen[A]): Unit = {
