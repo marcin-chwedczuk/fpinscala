@@ -283,16 +283,35 @@ object PropTesting {
       Prop.forAll(SGen.listOf(Gen.choose(-10, 10))) { _.length < 5 }.run(10, 200, rng)
     )
 
-    run("max",
+    run("max") {
       Prop.forAll(SGen.listOf(Gen.choose(-10, 10))) { list =>
         list.forall { _ <= list.max }
-      })
+      }
+    }
 
-    run("empty list",
-      Prop.forAll(SGen.listOf(Gen.choose(-10, 10))) { _.nonEmpty})
+    run("empty list") {
+      Prop.forAll(SGen.listOf(Gen.choose(-10, 10))) {
+        _.nonEmpty
+      }
+    }
+
+    println("sort ----------------------------------")
+
+    run("sort spec") {
+      val list = SGen.listOf(Gen.choose(-10, 10))
+      val list1 = SGen.listOf1(Gen.choose(-10, 10))
+
+      Prop.forAll(list) { l => l.sorted.sorted == l.sorted } &&
+      Prop.forAll(list1) { l => l.sorted.head == l.min } &&
+      Prop.forAll(list1) { l => l.sorted.last == l.max } &&
+      Prop.forAll(list1) { l =>
+        val s = l.sorted
+        s.zip(s.drop(1)).forall { case(a, b) => a <= b }
+      }
+    }
   }
 
-  private def run(name: String, p: Prop): Unit = {
+  private def run(name: String)(p: Prop): Unit = {
     val rng = SimpleRNG(101)
 
     print(s"$name: ")
