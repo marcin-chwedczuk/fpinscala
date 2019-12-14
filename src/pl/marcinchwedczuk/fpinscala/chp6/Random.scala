@@ -5,7 +5,7 @@ import scala.annotation.tailrec
 trait RNG {
   def nextInt: (Int, RNG)
 
-  def nextPositiveInt: (Int, RNG) = {
+  def nextNonNegativeInt: (Int, RNG) = {
     val (n, rng) = nextInt
     val p = if (n >= 0) n
             // clear sign bit
@@ -15,7 +15,7 @@ trait RNG {
   }
 
   def double: (Double, RNG) = {
-    val (p, rng) = nextPositiveInt
+    val (p, rng) = nextNonNegativeInt
     val d = p / (Int.MaxValue + 1.0d)
     (d, rng)
   }
@@ -252,7 +252,7 @@ object Random {
       else unit(mod)
     }
 
-  val positiveInt: Rand[Int] = _.nextPositiveInt
+  val positiveInt: Rand[Int] = _.nextNonNegativeInt
 
   def nonNegativeEven: Rand[Int] =
     map(positiveInt)(i => i - i % 2)
@@ -264,7 +264,7 @@ object Random {
     println(r.nextInt._1)
     println(r.nextInt._2.nextInt._1)
 
-    println(r.nextPositiveInt)
+    println(r.nextNonNegativeInt)
     println(r.double)
 
     println("random tuples:")
