@@ -26,12 +26,14 @@ trait Parsers[ParseError, Parser[+_]] { self =>
   def many1[A](p: Parser[A]): Parser[List[A]] =
     (p ~> many(p)).map { case (a, as) => a :: as }
 
-  def concat[A,B](p1: Parser[A], p2: => Parser[B]): Parser[(A,B)]
+  def concat[A,B](p1: Parser[A], p2: => Parser[B]): Parser[(A,B)] =
+    p1.flatMap { a => p2.map(b => (a, b)) }
   def or[A](l: Parser[A], r: => Parser[A]): Parser[A]
 
-  def map[A,B](p: Parser[A])(f: A => B): Parser[B]
+  def map[A,B](p: Parser[A])(f: A => B): Parser[B] =
+    p.flatMap(a => succeed(f(a)))
   def map2[A,B,C](pa: Parser[A], pb: => Parser[B])(f: (A,B) => C): Parser[C] =
-    (pa ~> pb).map { case (a, b) => f(a, b) }
+    pa.flatMap { a => pb.map(b => f(a, b)) }
   def flatMap[A,B](p: Parser[A])(f: A => Parser[B]): Parser[B]
 
   implicit def stringToParser(s: String): Parser[String]
@@ -115,7 +117,7 @@ object ParsersTesting {
         .flatMap(n => char('a').repeat(n))
 
       Prop.assert { run(p)("4aaaa") == Right("aaaa") }
-      Prop.assert { run(p)("4aaa").isInstanceOf[Left] }
+      Prop.assert { run(p)("4aaa").isInstanceOf[Left[_,_]] }
     }
   }
 
