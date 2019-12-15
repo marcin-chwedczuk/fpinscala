@@ -12,12 +12,13 @@ case object Passed extends Result {
   override def isFalsified: Boolean = false
 }
 
-case class Falsified(failure: FailedCase,
+case class Falsified(tag: String,
+                     failure: FailedCase,
                      successCount: SuccessCount) extends Result {
   override def isFalsified: Boolean = true
 
   override def toString: FailedCase =
-    s"Falsified { failingCase=$failure, attempts=$successCount }"
+    s"Falsified { tag=$tag, failingCase=$failure, attempts=$successCount }"
 }
 
 // testCases - number of tries per *single* prop!
@@ -55,13 +56,13 @@ object Prop {
   type TestCases = Int
   type MaximumSize = Int
 
-  def forAll[A](a: SGen[A])(p: A => Boolean): Prop = Prop { (size, n, rng) =>
+  def forAll[A](a: SGen[A], tag: String = "")(p: A => Boolean): Prop = Prop { (size, n, rng) =>
     val casesPerSize = (n + (size - 1)) / size
 
     val prop = Stream.from(0)
       .take((n min size) + 1)
       .map { sampleSize =>
-        forAll(a.forSize(sampleSize))(p)
+        forAll(a.forSize(sampleSize), tag)(p)
       }
       .map { p =>
         Prop { (_size, _, _rng) =>
@@ -73,13 +74,15 @@ object Prop {
     prop.run(size, n, rng)
   }
 
-  def forAll[A](a: Gen[A])(p: A => Boolean): Prop = Prop { (_, n, rng) =>
+  def forAll[A](a: Gen[A])(p: A => Boolean): Prop = forAll(a, "")(p)
+
+  def forAll[A](a: Gen[A], tag: String)(p: A => Boolean): Prop = Prop { (_, n, rng) =>
     Stream.zipWith(
         randomStream(a)(rng),
         Stream.from(0))((_, _))
       .take(n).map { case (a, i) =>
-        try { if (p(a)) Passed else Falsified(a.toString, i) }
-        catch { case e: Exception => Falsified(buildMsg(a, e), i) }
+        try { if (p(a)) Passed else Falsified(tag, a.toString, i) }
+        catch { case e: Exception => Falsified(tag, buildMsg(a, e), i) }
       }
       .find(_.isFalsified)
       .getOrElse(Passed)
@@ -301,10 +304,10 @@ object PropTesting {
       val list = SGen.listOf(Gen.choose(-10, 10))
       val list1 = SGen.listOf1(Gen.choose(-10, 10))
 
-      Prop.forAll(list) { l => l.sorted.sorted == l.sorted } &&
-      Prop.forAll(list1) { l => l.sorted.head == l.min } &&
-      Prop.forAll(list1) { l => l.sorted.last == l.max } &&
-      Prop.forAll(list1) { l =>
+      Prop.forAll(list, "reversed") { l => l.sorted.sorted == l.sorted } &&
+      Prop.forAll(list1, "head min") { l => l.sorted.head == l.min } &&
+      Prop.forAll(list1, "head max") { l => l.sorted.last == l.max } &&
+      Prop.forAll(list1, "order") { l =>
         val s = l.sorted
         s.zip(s.drop(1)).forall { case(a, b) => a <= b }
       }
