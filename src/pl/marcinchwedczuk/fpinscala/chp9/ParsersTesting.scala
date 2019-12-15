@@ -15,10 +15,18 @@ trait Parsers[ParseError, Parser[+_]] { self =>
     if (n <= 0) succeed(List())
     else (p ~> listOfN(n-1, p)).map { case(p, ps) => p :: ps }
 
+
+  def toValue[A,B](a: Parser[A])(b: => B): Parser[B] =
+    map(a)(_ => b)
+
   def succeed[A](a: A): Parser[A] =
     string("").map(_ => a)
 
   def input[A](p: Parser[A]): Parser[String]
+
+  def zeroOrOne[A](p: Parser[A]): Parser[Option[A]] = {
+    p.map(Some(_)) | succeed(None)
+  }
 
   def many[A](p: Parser[A]): Parser[List[A]] =
     many1(p) | succeed(List())
@@ -47,6 +55,7 @@ trait Parsers[ParseError, Parser[+_]] { self =>
 
   case class RichParser[A](p: Parser[A]) {
     def many: Parser[List[A]] = self.many(p)
+    def zeroOrOne: Parser[Option[A]] = self.zeroOrOne(p)
     def oneOrMore: Parser[List[A]] = self.many1(p)
     def repeat(n: Int): Parser[List[A]] = self.listOfN(n, p)
 
@@ -55,14 +64,99 @@ trait Parsers[ParseError, Parser[+_]] { self =>
 
     def map[B](f: A => B): Parser[B] = self.map(p)(f)
     def flatMap[B](f: A => Parser[B]): Parser[B] = self.flatMap(p)(f)
+
+    def to[B](b: => B): Parser[B] = self.toValue(p)(b)
     def input: Parser[String] = self.input(p)
   }
+}
+
+trait JSON
+object JSON {
+  case object JNull extends JSON
+  case class JNumber(get: Double) extends JSON
+  case class JString(get: String) extends JSON
+  case class JBool(get: Boolean) extends JSON
+  case class JArray(get: List[JSON]) extends JSON
+  case class JObject(get: Map[String, JSON]) extends JSON
 }
 
 object ParsersTesting {
   def main(args: Array[String]): Unit = {
 
     println("ok")
+  }
+
+  def jsonParser[Err, Parser[+_]](P: Parsers[Err, Parser]): Parser[JSON] = {
+    import P._
+    import JSON._
+
+    // no spaces at beginning and end
+    var json: Parser[JSON] = succeed(JNull)
+
+    val jnumber = regex("[0-9](.[0-9]+)?([eE][0-9]+)?".r)
+        .map(_.toDouble)
+        .map(JNumber)
+
+    val hexDigit = regex("[0-9a-fA-F]".r)
+
+    val nonEscapedChar = regex("[^\\\\]".r)
+    val escapedChar = (char('\\') ~> (
+      char('n').to("\n") |
+      char('t').to("\t") |
+      char('r').to("\r") |
+      char('\\').to("\\") |
+      char('"').to("\"") |
+      char('\'').to("'") |
+      (char('u') ~> hexDigit.repeat(4)).map { case (_, hexDigits) =>
+        val charCode = Integer.parseInt(hexDigits.mkString(""), 16)
+        charCode.toChar.toString
+      }
+    )).map { case(_, s) => s }
+
+    val jstring = (char('"') ~> (nonEscapedChar | escapedChar).many ~> char('"'))
+        .map { case ((_, b), _) => "\"" + b + "\"" }
+        .map(JString)
+
+    val jnull = string("null").to(JNull)
+
+    val jbool = string("true").to(JBool(true)) |
+                string("false").to(JBool(false))
+
+    val ws = regex("[ \t\n\r]*".r).to(())
+
+    val jarrayElement = (ws ~> json).map { case (_, j) => j }
+    val jarrayNextElement = (ws ~> char(',') ~> ws ~> json)
+      .map { case (_, j) => j }
+
+    val jarrayElements = (jarrayElement ~> jarrayNextElement.many)
+      .map { case (el, list) => el :: list }
+      .zeroOrOne
+      .map { opt => opt.getOrElse(List()) }
+
+    val jarray = (char('[') ~> jarrayElements ~> ws ~> char(']'))
+        .map { case (((_, l), _), _) => l }
+        .map(JArray)
+
+
+    val keyValue = (jstring ~> (ws ~> char(':') ~> ws) ~> json)
+      .map { case ((key, _), obj) => key -> obj }
+
+    val keyValueNext = ((ws ~> char(',') ~> ws) ~> jstring ~> (ws ~> char(':') ~> ws) ~> json)
+      .map { case (((_, key), _), obj) => (key -> obj) }
+
+    val keyValues = (keyValue ~> keyValueNext.many)
+      .map { case (p, pairs) => p :: pairs }
+      .zeroOrOne
+      .map { opt => opt.getOrElse(List()) }
+
+    // we don't check for duplicated keys
+    val jobject = (char('{') ~> keyValues ~> (ws ~> char('}')))
+        .map { case ((_, pairs), _) => pairs.map(p => (p._1.get, p._2)).toMap }
+        .map(JObject)
+
+    json = jnull | jbool | jnumber | jstring | jarray | jobject
+
+    json
   }
 
   def testImpl[ParseError, Parser[+_]](t: Parsers[ParseError, Parser]): Unit = {
