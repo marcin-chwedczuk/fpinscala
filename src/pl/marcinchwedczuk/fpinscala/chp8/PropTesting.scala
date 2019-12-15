@@ -1,8 +1,11 @@
 package pl.marcinchwedczuk.fpinscala.chp8
 
+import java.util.concurrent.Executors
+
 import pl.marcinchwedczuk.fpinscala.chp6.{RNG, SimpleRNG, State}
 import pl.marcinchwedczuk.fpinscala.chp8.Prop.{FailedCase, MaximumSize, SuccessCount, TestCases}
 import pl.marcinchwedczuk.fpinscala.chp5._
+import pl.marcinchwedczuk.fpinscala.chp7.NonBlockingParallelLib.Par
 
 sealed trait Result {
   def isFalsified: Boolean
@@ -12,13 +15,19 @@ case object Passed extends Result {
   override def isFalsified: Boolean = false
 }
 
+case object Proved extends Result {
+  override def isFalsified: Boolean = false
+}
+
 case class Falsified(tag: String,
                      failure: FailedCase,
                      successCount: SuccessCount) extends Result {
   override def isFalsified: Boolean = true
 
-  override def toString: FailedCase =
-    s"Falsified { tag=$tag, failingCase=$failure, attempts=$successCount }"
+  override def toString: FailedCase = {
+    val tagString = if (tag.isEmpty) "" else s"tag=$tag, "
+    s"Falsified { ${tagString}failingCase=$failure, attempts=$successCount }"
+  }
 }
 
 // testCases - number of tries per *single* prop!
@@ -96,6 +105,10 @@ object Prop {
     s"test case: $s\n" +
     s"generated an exception: ${e.toString}\n" +
     s"stacktrace:\n${e.getStackTrace.mkString("\n")}"
+
+  def assert(prop: => Boolean): Prop = Prop { (_, _, _) =>
+    if (prop) Proved else Falsified(tag="", "<no input>", 0)
+  }
 }
 
 case class Gen[+A](sample: State[RNG, A]) { self =>
@@ -312,6 +325,19 @@ object PropTesting {
         s.zip(s.drop(1)).forall { case(a, b) => a <= b }
       }
     }
+
+    val ES = Executors.newFixedThreadPool(7)
+    run("map law - par lib") {
+      Prop.forAll(Gen.unit(Par.unit(1))) { u1 =>
+        u1.map(_ + 1).run(ES) == Par.unit(2).run(ES)
+      }
+    }
+
+    run("test check") {
+      Prop.assert { false }
+    }
+
+    ES.shutdown()
   }
 
   private def run(name: String)(p: Prop): Unit = {
